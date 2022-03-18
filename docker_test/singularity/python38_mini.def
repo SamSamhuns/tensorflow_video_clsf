@@ -1,0 +1,14 @@
+# build this singularity image with cmd: sudo singularity build <TARGET.sif> build.def
+Bootstrap: docker
+From: python:3.8.12-slim-buster
+
+%runscript
+    echo "Hello, World"
+    python --version
+
+%labels
+    Author fname.lname@org
+    Version v0.0.1
+
+%help
+    Container for pytohn version 3.8

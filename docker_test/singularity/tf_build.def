@@ -1,0 +1,44 @@
+# build this singularity image with cmd singularity build <TARGET.sif> build.def
+Bootstrap: docker
+From: tensorflow/tensorflow:latest-gpu
+
+
+# cmds are executed in the HOST system outside of the container after the base OS is installed
+# container file system can be referenced with $SINGULARITY_ROOTFS
+%setup
+    mkdir -p ${SINGULARITY_ROOTFS}/train
+
+# copying files from HOST to CONTAINER system
+# each line is a <source> <destination> pair
+%files
+    ../requirements.txt /train/requirements.txt
+
+%post
+    apt-get -y update
+    apt-get -y install libsm6 libxext6 libgl1-mesa-glx python3-venv -y
+    pip install --upgrade pip
+    pip install -r /train/requirements.txt
+
+# env vars that will be set at runtime
+%environment
+    export TEST_ENV="yas"
+
+%runscript
+    echo "Hello, World"
+    python --version
+    python -c "import tensorflow as tf"
+
+%test
+    grep -q NAME=\"Ubuntu\" /etc/os-release
+    if [ $? -eq 0 ]; then
+        echo "Container base is Ubuntu as expected."
+    else
+        echo "Container base is not Ubuntu."
+    fi
+
+%labels
+    Author fname.lname@org
+    Version v0.0.1
+
+%help
+    Container for training video classification with latest version of tensorflow

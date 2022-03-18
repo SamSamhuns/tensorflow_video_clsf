@@ -1,0 +1,27 @@
+# build this singularity image with cmd singularity build <TARGET.sif> build.def
+Bootstrap: docker
+From: alpine:latest
+
+# cmds are executed in the HOST system outside of the container after the base OS is installed
+# container file system can be referenced with $SINGULARITY_ROOTFS
+%setup
+    mkdir -p ${SINGULARITY_ROOTFS}/train
+
+# copying files from HOST to CONTAINER system
+# each line is a <source> <destination> pair
+%files
+    requirements.txt /train/requirements.txt
+
+# env vars that will be set at runtime
+%environment
+    export TEST_ENV="yas"
+
+%runscript
+    echo "Hello, World"
+
+%labels
+    Author fname.lname@org
+    Version v0.0.1
+
+%help
+    Container for alpine testing
