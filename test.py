@@ -9,6 +9,7 @@ import argparse
 import os.path as osp
 from functools import partial
 from datetime import datetime
+from collections import OrderedDict
 from contextlib import redirect_stdout
 
 import cv2
@@ -28,17 +29,17 @@ def test(config, model_path):
     test_data_path = config["data"]["test_data_dir"]
     num_classes = config["data"]["num_classes"]
     MAX_FRAMES = config["data"]["max_frames_per_video"]
-    # LABEL_MAP = config["CLASS_NAME_TO_LABEL"]
-    LABEL_MAP = {
-        "family": 0,
-        "female": 1,
-        "female_n_male": 2,
-        "female_with_kids": 3,
-        "male": 4,
-        "male_with_kids": 5,
-        "none": 6,
-        "young_kid": 7
-    }
+    LABEL_MAP = OrderedDict(config["CLASS_NAME_TO_LABEL"])
+
+    # NOTE: If there are multiple classes with same label,
+    # the class with the first repeated label is used
+    # and the order of class_names: class_label will matter in LABEL_MAP
+    _filtered_label_map, _seen_val_set = {}, set()
+    for key, val in LABEL_MAP.items():
+        if val not in _seen_val_set:
+            _filtered_label_map[key] = val
+            _seen_val_set.add(val)
+    LABEL_MAP = _filtered_label_map
 
     c_datetime = datetime.now().strftime(r'%Y%m%d_%H_%M_%S')
     log_dir = osp.join(config["trainer"]["log_dir"],
@@ -71,6 +72,7 @@ def test(config, model_path):
     batch_size = config["data"]["test_bsize"]
     preprocess_func = PREPROCESS_FUNCS[backbone]
     img_size = IMAGE_SIZE[backbone]
+    labels_seen = set()
 
     agg_pred, agg_label = [], []
     with tqdm.tqdm(total=number_samples) as pbar:
@@ -92,6 +94,7 @@ def test(config, model_path):
                 frames_batch.append(preprocessed_frames)
                 labels_batch.append(LABEL_MAP[fpath.split('/')[-2]])
                 pbar.update(1)
+            labels_seen |= set(labels_batch)
             frames_batch = np.asarray(frames_batch)
             labels_batch = np.asarray(labels_batch)
             output_batch = model(frames_batch)
@@ -104,6 +107,10 @@ def test(config, model_path):
     # combine dataloader len & bsize axes
     agg_pred = agg_pred.reshape(-1, agg_pred.shape[-1])
     agg_label = agg_label.flatten()
+
+    # filter label names that were not seen in test set
+    LABEL_MAP = {cname: clabel for cname, clabel in LABEL_MAP.items()
+                 if clabel in labels_seen}
 
     met_val_dict = {}
     met_func_dict = {"accuracy": accuracy,
@@ -140,8 +147,18 @@ def test_masked(config, model_path):
     backbone = config["backbone"]
     test_data_path = config["data"]["test_data_dir"]
     num_classes = config["data"]["num_classes"]
-    LABEL_MAP = config["CLASS_NAME_TO_LABEL"]
     MAX_FRAMES = config["data"]["max_frames_per_video"]
+    LABEL_MAP = config["CLASS_NAME_TO_LABEL"]
+
+    # NOTE: If there are multiple classes with same label,
+    # the class with the first repeated label is used
+    # and the order of class_names: class_label will matter in LABEL_MAP
+    _filtered_label_map, _seen_val_set = {}, set()
+    for key, val in LABEL_MAP.items():
+        if val not in _seen_val_set:
+            _filtered_label_map[key] = val
+            _seen_val_set.add(val)
+    LABEL_MAP = _filtered_label_map
 
     c_datetime = datetime.now().strftime(r'%Y%m%d_%H_%M_%S')
     log_dir = osp.join(config["trainer"]["log_dir"],
@@ -174,6 +191,7 @@ def test_masked(config, model_path):
     batch_size = config["data"]["test_bsize"]
     preprocess_func = PREPROCESS_FUNCS[backbone]
     img_size = IMAGE_SIZE[backbone]
+    labels_seen = set()
 
     agg_pred, agg_label = [], []
     with tqdm.tqdm(total=number_samples) as pbar:
@@ -198,6 +216,7 @@ def test_masked(config, model_path):
                 frames_batch.append(preprocessed_frames)
                 labels_batch.append(LABEL_MAP[fpath.split('/')[-2]])
                 pbar.update(1)
+            labels_seen |= set(labels_batch)
             frames_batch = np.asarray(frames_batch)
             labels_batch = np.asarray(labels_batch)
             masks_batch = np.asarray(masks_batch)
@@ -211,6 +230,10 @@ def test_masked(config, model_path):
     # combine dataloader len & bsize axes
     agg_pred = agg_pred.reshape(-1, agg_pred.shape[-1])
     agg_label = agg_label.flatten()
+
+    # filter label names that were not seen in test set
+    LABEL_MAP = {cname: clabel for cname, clabel in LABEL_MAP.items()
+                 if clabel in labels_seen}
 
     met_val_dict = {}
     met_func_dict = {"accuracy": accuracy,
