@@ -148,7 +148,7 @@ def test_masked(config, model_path):
     test_data_path = config["data"]["test_data_dir"]
     num_classes = config["data"]["num_classes"]
     MAX_FRAMES = config["data"]["max_frames_per_video"]
-    LABEL_MAP = config["CLASS_NAME_TO_LABEL"]
+    LABEL_MAP = OrderedDict(config["CLASS_NAME_TO_LABEL"])
 
     # NOTE: If there are multiple classes with same label,
     # the class with the first repeated label is used
