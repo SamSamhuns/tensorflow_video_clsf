@@ -25,6 +25,9 @@ from utils.common import read_json, write_json, recursively_get_file_paths
 from utils.common import init_obj
 from utils.model import IMAGE_SIZE, PREPROCESS_FUNCS, BACKBONE_MODELS
 
+from tensorflow.keras import mixed_precision
+mixed_precision.set_global_policy('mixed_float16')
+
 
 class VideoClassifier():
     """Train Classifier on videos"""
@@ -94,6 +97,7 @@ class VideoClassifier():
 
         # save updated config file to the checkpoint dir
         write_json(config, osp.join(self.models_save_path, 'config.json'))
+        print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
     def build_model(self):
 
@@ -110,7 +114,7 @@ class VideoClassifier():
         model = GRU(self.gru_units)(model)
         model = Dense(self.gru_units // 2, activation="relu")(model)
         model = Dropout(0.2)(model)
-        output = Dense(self.n_classes, activation="softmax")(model)
+        output = Dense(self.n_classes, activation="softmax", dtype='float32')(model)
 
         model._name = f"{self.config['backbone']}_video_clsf"
         self.model = Model([input_layer], output)
@@ -220,7 +224,7 @@ class VideoClassifier():
         model = GRU(self.gru_units)(model, mask=mask_input)
         model = Dense(self.gru_units // 2, activation="relu")(model)
         model = Dropout(0.2)(model)
-        output = Dense(self.n_classes, activation="softmax")(model)
+        output = Dense(self.n_classes, activation="softmax", dtype='float32')(model)
 
         model._name = f"{self.config['backbone']}_video_clsf"
         self.model = Model([image_input, mask_input], output)
