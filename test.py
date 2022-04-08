@@ -267,10 +267,10 @@ def test_masked(config, model_path):
 
 def main():
     parser = argparse.ArgumentParser(description='Tensorflow Testing')
-    parser.add_argument('-cp', '--config_path', type=str,
+    parser.add_argument('--cfg', '--config_path', type=str, dest="config_path",
                         default="config/train_video_frames.json",
                         help="Path to train config file (default: %(default)s)")
-    parser.add_argument('-mp', '--model_path', required=True, type=str,
+    parser.add_argument('--mp', '--model_path', type=str, dest="model_path", required=True,
                         help="Path to model (h5 model path or savedmodel dir)")
     args = parser.parse_args()
     config = read_json(args.config_path)
