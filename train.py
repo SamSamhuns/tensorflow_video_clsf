@@ -72,10 +72,11 @@ class VideoClassifier():
         self.MAX_FRAMES = config["data"]["max_frames_per_video"]
         self.n_classes = config["data"]["num_classes"]
         self.data_extension = config["data"]["data_file_extension"]
-        self.train_data_size = len(
-            recursively_get_file_paths(config["data"]["train_data_dir"], ext=self.data_extension))
-        self.validation_data_size = len(
-            recursively_get_file_paths(config["data"]["val_data_dir"], ext=self.data_extension))
+
+        self.train_data_paths = recursively_get_file_paths(config["data"]["train_data_dir"], ext=self.data_extension)
+        self.val_data_paths = recursively_get_file_paths(config["data"]["val_data_dir"], ext=self.data_extension)
+        self.train_data_size = len(self.train_data_paths)
+        self.validation_data_size = len(self.val_data_paths)
 
         # dump custom env vars from .env file to config.json
         self.config = config
@@ -107,6 +108,41 @@ class VideoClassifier():
         # this CLI override should be used when resuming from a ckpt
         if learning_rate:
             self.config["optimizer"]["args"]["learning_rate"] = learning_rate
+
+        # set callbacks
+        ckpt_filefmt = ("e{epoch:02d}_ta_{categorical_accuracy:.2f}_tl_{loss:.2f}"
+                        "_va_{val_categorical_accuracy:.2f}_vl_{val_loss:.2f}")
+        model_checkpoint_callback = ModelCheckpoint(
+            filepath=osp.join(self.models_save_path, ckpt_filefmt),
+            save_weights_only=False,
+            monitor='val_categorical_accuracy',
+            mode='auto',
+            save_best_only=True)
+        LROnPlateau = ReduceLROnPlateau(
+            monitor="val_categorical_accuracy",
+            factor=0.1, patience=2, verbose=0,
+            mode="auto", min_delta=0.0001, cooldown=0,
+            min_lr=0)
+        early_stopping_callback = tf.keras.callbacks.EarlyStopping(
+            monitor='val_loss', min_delta=0, patience=3, verbose=0,
+            mode='auto', baseline=None, restore_best_weights=False)
+        log_file = open(self.logfile_path, mode='a', buffering=1)
+        epoch_train_log_callback = tf.keras.callbacks.LambdaCallback(
+            on_epoch_end=lambda epoch, logs: log_file.write(
+                f"epoch: {epoch}, loss: {logs['loss']}, accuracy: {logs['categorical_accuracy']}, "
+                f"val_loss: {logs['val_loss']}, val_accuracy: {logs['val_categorical_accuracy']}\n"),
+            on_train_end=lambda logs: log_file.close())
+
+        def _update_initial_epoch(epoch):
+            self.config["trainer"]["initial_epoch"] = epoch
+            write_json(self.config, osp.join(
+                self.models_save_path, 'config.json'))
+        update_initial_epoch_callback = tf.keras.callbacks.LambdaCallback(
+            on_epoch_end=lambda epoch, logs: _update_initial_epoch(epoch))
+
+        self.callbacks_list = [LROnPlateau, model_checkpoint_callback,
+                               early_stopping_callback, epoch_train_log_callback,
+                               update_initial_epoch_callback]
 
         # save updated config file to the checkpoint dir
         write_json(config, osp.join(self.models_save_path, 'config.json'))
@@ -149,40 +185,6 @@ class VideoClassifier():
                 optimizer=self.optimizer,
                 metrics=["categorical_accuracy"])
 
-        ckpt_filefmt = ("e{epoch:02d}_ta_{categorical_accuracy:.2f}_tl_{loss:.2f}"
-                        "_va_{val_categorical_accuracy:.2f}_vl_{val_loss:.2f}")
-        model_checkpoint_callback = ModelCheckpoint(
-            filepath=osp.join(self.models_save_path, ckpt_filefmt),
-            save_weights_only=False,
-            monitor='val_categorical_accuracy',
-            mode='auto',
-            save_best_only=True)
-        LROnPlateau = ReduceLROnPlateau(
-            monitor="val_categorical_accuracy",
-            factor=0.99, patience=2, verbose=0,
-            mode="auto", min_delta=0.0001, cooldown=0,
-            min_lr=0)
-        early_stopping_callback = tf.keras.callbacks.EarlyStopping(
-            monitor='val_loss', min_delta=0, patience=3, verbose=0,
-            mode='auto', baseline=None, restore_best_weights=False)
-        log_file = open(self.logfile_path, mode='a', buffering=1)
-        epoch_train_log_callback = tf.keras.callbacks.LambdaCallback(
-            on_epoch_end=lambda epoch, logs: log_file.write(
-                f"epoch: {epoch}, loss: {logs['loss']}, accuracy: {logs['categorical_accuracy']}, "
-                f"val_loss: {logs['val_loss']}, val_accuracy: {logs['val_categorical_accuracy']}\n"),
-            on_train_end=lambda logs: log_file.close())
-
-        def _update_initial_epoch(epoch):
-            self.config["trainer"]["initial_epoch"] = epoch
-            write_json(self.config, osp.join(
-                self.models_save_path, 'config.json'))
-        update_initial_epoch_callback = tf.keras.callbacks.LambdaCallback(
-            on_epoch_end=lambda epoch, logs: _update_initial_epoch(epoch))
-
-        self.callbacks_list = [LROnPlateau, model_checkpoint_callback,
-                               early_stopping_callback, epoch_train_log_callback,
-                               update_initial_epoch_callback]
-
         # stream & print model summary to logger
         f = io.StringIO()
         with redirect_stdout(f):
@@ -191,10 +193,8 @@ class VideoClassifier():
         self.logger.info(model_summary)
         print(model_summary)
 
-    def data_generator(self, root_data_path, batch_size=32):
+    def data_generator(self, data_paths, batch_size=32):
         """Generate batches with images from video."""
-        data_paths = recursively_get_file_paths(
-            root_data_path, ext=self.data_extension)
         img_size = IMAGE_SIZE[self.config["backbone"]]
         while True:
             random.shuffle(data_paths)
@@ -224,13 +224,13 @@ class VideoClassifier():
     def train(self):
         """Train model on video with image features."""
         self.model.fit(
-            x=self.data_generator(root_data_path=self.config["data"]["train_data_dir"],
+            x=self.data_generator(data_paths=self.train_data_paths,
                                   batch_size=self.config["data"]["train_bsize"]),
             steps_per_epoch=self.train_data_size // self.config["data"]["train_bsize"],
             epochs=self.config["trainer"]["epochs"],
             verbose=self.config["trainer"]["verbose"],
             callbacks=self.callbacks_list,
-            validation_data=self.data_generator(root_data_path=self.config["data"]["val_data_dir"],
+            validation_data=self.data_generator(data_paths=self.val_data_paths,
                                                 batch_size=self.config["data"]["val_bsize"]),
             validation_steps=self.validation_data_size // self.config["data"]["val_bsize"],
             shuffle=self.config["trainer"]["shuffle"],
@@ -281,39 +281,6 @@ class VideoClassifier():
                 metrics=["categorical_accuracy"])
             tf.config.optimizer.set_jit(True)
 
-        ckpt_filefmt = ("e{epoch:02d}_ta_{categorical_accuracy:.2f}_tl_{loss:.2f}"
-                        "_va_{val_categorical_accuracy:.2f}_vl_{val_loss:.2f}")
-        model_checkpoint_callback = ModelCheckpoint(
-            filepath=osp.join(self.models_save_path, ckpt_filefmt),
-            save_weights_only=False,
-            monitor='val_categorical_accuracy',
-            mode='auto',
-            save_best_only=True)
-        LROnPlateau = ReduceLROnPlateau(
-            monitor="val_categorical_accuracy",
-            factor=0.99, patience=2, verbose=0,
-            mode="auto", min_delta=0.0001, cooldown=0,
-            min_lr=0)
-        early_stopping_callback = tf.keras.callbacks.EarlyStopping(
-            monitor='val_loss', min_delta=0, patience=3, verbose=0,
-            mode='auto', baseline=None, restore_best_weights=False)
-        log_file = open(self.logfile_path, mode='a', buffering=1)
-        epoch_train_log_callback = tf.keras.callbacks.LambdaCallback(
-            on_epoch_end=lambda epoch, logs: log_file.write(
-                f"epoch: {epoch}, loss: {logs['loss']}, accuracy: {logs['categorical_accuracy']}, "
-                f"val_loss: {logs['val_loss']}, val_accuracy: {logs['val_categorical_accuracy']}\n"),
-            on_train_end=lambda logs: log_file.close())
-
-        def _update_initial_epoch(epoch):
-            self.config["trainer"]["initial_epoch"] = epoch
-            write_json(self.config, osp.join(
-                self.models_save_path, 'config.json'))
-        update_initial_epoch_callback = tf.keras.callbacks.LambdaCallback(
-            on_epoch_end=lambda epoch, logs: _update_initial_epoch(epoch))
-        self.callbacks_list = [LROnPlateau, model_checkpoint_callback,
-                               early_stopping_callback, epoch_train_log_callback,
-                               update_initial_epoch_callback]
-
         # stream & print model summary to logger
         f = io.StringIO()
         with redirect_stdout(f):
@@ -322,10 +289,8 @@ class VideoClassifier():
         self.logger.info(model_summary)
         print(model_summary)
 
-    def data_generator_masked(self, root_data_path, batch_size=32):
+    def data_generator_masked(self, data_paths, batch_size=32):
         """Generate batches with images from video."""
-        data_paths = recursively_get_file_paths(
-            root_data_path, ext=self.data_extension)
         img_size = IMAGE_SIZE[self.config["backbone"]]
         while True:
             random.shuffle(data_paths)
@@ -360,13 +325,13 @@ class VideoClassifier():
     def train_masked(self):
         """Train model on video with image features."""
         self.model.fit(
-            x=self.data_generator_masked(root_data_path=self.config["data"]["train_data_dir"],
+            x=self.data_generator_masked(root_data_path=self.train_data_paths,
                                          batch_size=self.config["data"]["train_bsize"]),
             steps_per_epoch=self.train_data_size // self.config["data"]["train_bsize"],
             epochs=self.config["trainer"]["epochs"],
             verbose=self.config["trainer"]["verbose"],
             callbacks=self.callbacks_list,
-            validation_data=self.data_generator_masked(root_data_path=self.config["data"]["val_data_dir"],
+            validation_data=self.data_generator_masked(root_data_path=self._data_paths,
                                                        batch_size=self.config["data"]["val_bsize"]),
             validation_steps=self.validation_data_size // self.config["data"]["val_bsize"],
             shuffle=self.config["trainer"]["shuffle"],
