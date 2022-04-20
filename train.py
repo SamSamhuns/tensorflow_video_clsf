@@ -16,40 +16,17 @@ import cv2
 import numpy as np
 
 import tensorflow as tf
-from tensorflow.keras.models import Model
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.callbacks import ModelCheckpoint, ReduceLROnPlateau
-from tensorflow.keras.layers import GRU, Dense, Input, TimeDistributed, Dropout
 
 from utils.common import read_json, write_json, recursively_get_file_paths
 from utils.common import init_obj
-from utils.model import IMAGE_SIZE, PREPROCESS_FUNCS, BACKBONE_MODELS
+from utils.models import IMAGE_SIZE, PREPROCESS_FUNCS, BACKBONE_MODELS
+from utils.model_builder import build_video_clsf_model, build_video_clsf_masked_model, build_video_clsf_movinet_model
 
 
 class VideoClassifier():
     """Train Classifier on videos"""
-
-    class _FeatureExtractor(tf.keras.Model):
-        """
-        Wrapper for tensorflow.keras.applications models
-        if they do not have the compute_output_shape method implemented
-        """
-
-        def __init__(self, base_model, **kwargs):
-            super(VideoClassifier._FeatureExtractor, self).__init__()
-            self.feat_ext = base_model(**kwargs)
-            self.feat_ext_output_shape = self.feat_ext.output_shape
-
-        def build(self, input_shape):
-            super(VideoClassifier._FeatureExtractor, self).build(input_shape)
-
-        def call(self, x, **kwargs):
-            input_shape = tf.shape(x)
-            out_tensor = self.feat_ext(x)
-            return tf.reshape(out_tensor, self.compute_output_shape(input_shape))
-
-        def compute_output_shape(self, input_shape):
-            return (input_shape[0], self.feat_ext_output_shape[-1])
 
     def __init__(self, config_path, resume_ckpt_path=None, learning_rate=None):
         config = read_json(config_path)
@@ -67,14 +44,17 @@ class VideoClassifier():
 
         self.callbacks_list = []
         self.preprocess_func = PREPROCESS_FUNCS[config["backbone"]]
-        self.base_model = BACKBONE_MODELS[config["backbone"]]
+        self.backbone_model = BACKBONE_MODELS[config["backbone"]]
         self.gru_units = config["gru_units"]
         self.MAX_FRAMES = config["data"]["max_frames_per_video"]
+        self.img_size = IMAGE_SIZE[config["backbone"]]
         self.n_classes = config["data"]["num_classes"]
         self.data_extension = config["data"]["data_file_extension"]
 
-        self.train_data_paths = recursively_get_file_paths(config["data"]["train_data_dir"], ext=self.data_extension)
-        self.val_data_paths = recursively_get_file_paths(config["data"]["val_data_dir"], ext=self.data_extension)
+        self.train_data_paths = recursively_get_file_paths(
+            config["data"]["train_data_dir"], ext=self.data_extension)
+        self.val_data_paths = recursively_get_file_paths(
+            config["data"]["val_data_dir"], ext=self.data_extension)
         self.train_data_size = len(self.train_data_paths)
         self.validation_data_size = len(self.val_data_paths)
 
@@ -157,25 +137,16 @@ class VideoClassifier():
             self.model.optimizer.lr = self.config["optimizer"]["args"]["learning_rate"]
         else:
             self.logger.info("Cold start training")
-            img_size = IMAGE_SIZE[self.config["backbone"]]
-            cnn = VideoClassifier._FeatureExtractor(
-                self.base_model,
-                weights="imagenet",
-                include_top=False,
-                pooling="avg",
-                input_shape=(img_size, img_size, 3))
+            model_name = f"{self.config['backbone']}_video_clsf"
 
-            input_layer = Input((self.MAX_FRAMES, img_size, img_size, 3))
-            model = TimeDistributed(cnn)(input_layer)
-            model = GRU(self.gru_units)(model)
-            model = Dense(self.gru_units // 2, activation="relu")(model)
-            model = Dropout(0.2)(model)
-            # import to set final dtype to float32 when using mixed_float16
-            output = Dense(self.n_classes, activation="softmax",
-                           dtype="float32")(model)
-
-            model._name = f"{self.config['backbone']}_video_clsf"
-            self.model = Model([input_layer], output)
+            if "movinet" in self.config['backbone']:
+                self.model = build_video_clsf_movinet_model(model_name, self.backbone_model, self.MAX_FRAMES,
+                                                            self.img_size, self.n_classes)
+            else:
+                self.model = build_video_clsf_model(model_name, self.backbone_model, self.MAX_FRAMES,
+                                                    self.img_size, self.gru_units, self.n_classes)
+            # self.model = build_video_clsf_masked_model(model_name, self.backbone_model, self.MAX_FRAMES,
+            #                                            self.img_size, self.gru_units, self.n_classes)
             self.optimizer = init_obj(
                 self.config, "optimizer", tf.keras.optimizers)
             self.loss = init_obj(self.config, "loss", tf.keras.losses)
@@ -184,102 +155,6 @@ class VideoClassifier():
                 loss=self.loss,
                 optimizer=self.optimizer,
                 metrics=["categorical_accuracy"])
-
-        # stream & print model summary to logger
-        f = io.StringIO()
-        with redirect_stdout(f):
-            self.model.summary()
-        model_summary = f.getvalue()
-        self.logger.info(model_summary)
-        print(model_summary)
-
-    def data_generator(self, data_paths, batch_size=32):
-        """Generate batches with images from video."""
-        img_size = IMAGE_SIZE[self.config["backbone"]]
-        while True:
-            random.shuffle(data_paths)
-            number_samples = len(data_paths)
-
-            for offset in range(0, number_samples, batch_size):
-                frames_batch = []
-                labels_batch = []
-                for fpath in data_paths[offset:offset + batch_size]:
-                    data = np.load(fpath)
-                    video_feats = data['arr']
-                    video_feats = video_feats[:self.MAX_FRAMES]
-                    if len(video_feats) < self.MAX_FRAMES:
-                        diff = self.MAX_FRAMES - len(video_feats)
-                        w, h = video_feats.shape[1:3]
-                        zero_frames = np.zeros([diff, w, h, 3])
-                        video_feats = np.concatenate(
-                            [video_feats, zero_frames])
-                    preprocessed_frames = np.asarray(
-                        [self.preprocess_func(cv2.resize(frame, (img_size, img_size)))
-                         for frame in copy.deepcopy(video_feats)])
-                    frames_batch.append(preprocessed_frames)
-                    labels_batch.append(
-                        self.config["CLASS_NAME_TO_LABEL"][fpath.split('/')[-2]])
-                yield np.asarray(frames_batch), to_categorical(labels_batch, num_classes=self.n_classes)
-
-    def train(self):
-        """Train model on video with image features."""
-        self.model.fit(
-            x=self.data_generator(data_paths=self.train_data_paths,
-                                  batch_size=self.config["data"]["train_bsize"]),
-            steps_per_epoch=self.train_data_size // self.config["data"]["train_bsize"],
-            epochs=self.config["trainer"]["epochs"],
-            verbose=self.config["trainer"]["verbose"],
-            callbacks=self.callbacks_list,
-            validation_data=self.data_generator(data_paths=self.val_data_paths,
-                                                batch_size=self.config["data"]["val_bsize"]),
-            validation_steps=self.validation_data_size // self.config["data"]["val_bsize"],
-            shuffle=self.config["trainer"]["shuffle"],
-            sample_weight=None,
-            initial_epoch=self.config["trainer"]["initial_epoch"],
-            validation_freq=self.config["trainer"]["val_freq"],
-            workers=self.config["trainer"]["num_workers"],
-            use_multiprocessing=self.config["trainer"]["use_multiproc"])
-
-    def build_model_masked(self):
-        if self.resume_ckpt:
-            self.logger.info(
-                f"Warm start training from checkpoint {self.resume_ckpt}")
-            self.logger.info(
-                f"Warm start training from checkpoint {self.resume_ckpt}")
-            model = tf.keras.models.load_model(self.resume_ckpt, compile=True)
-            # To change anything except learning rate, recompilation is required
-            model.optimizer.lr = self.config["optimizer"]["args"]["learning_rate"]
-        else:
-            self.logger.info("Cold start training")
-            img_size = IMAGE_SIZE[self.config["backbone"]]
-            cnn = VideoClassifier._FeatureExtractor(
-                self.base_model,
-                weights="imagenet",
-                include_top=False,
-                pooling="avg",
-                input_shape=(img_size, img_size, 3))
-
-            image_input = Input((self.MAX_FRAMES, img_size, img_size, 3))
-            mask_input = Input((self.MAX_FRAMES,), dtype="bool")
-            model = TimeDistributed(cnn)(image_input)
-            model = GRU(self.gru_units)(model, mask=mask_input)
-            model = Dense(self.gru_units // 2, activation="relu")(model)
-            model = Dropout(0.2)(model)
-            # import to set final dtype to float32 when using mixed_float16
-            output = Dense(self.n_classes, activation="softmax",
-                           dtype='float32')(model)
-
-            model._name = f"{self.config['backbone']}_video_clsf"
-            self.model = Model([image_input, mask_input], output)
-            self.optimizer = init_obj(
-                self.config, "optimizer", tf.keras.optimizers)
-            self.loss = init_obj(self.config, "loss", tf.keras.losses)
-            tf.config.optimizer.set_jit(True)
-            self.model.compile(
-                loss=self.loss,
-                optimizer=self.optimizer,
-                metrics=["categorical_accuracy"])
-            tf.config.optimizer.set_jit(True)
 
         # stream & print model summary to logger
         f = io.StringIO()
@@ -322,17 +197,44 @@ class VideoClassifier():
                 yield ((np.asarray(frames_batch), np.asarray(masks_batch)),
                        to_categorical(labels_batch, num_classes=self.n_classes))
 
-    def train_masked(self):
+    def data_generator(self, data_paths, batch_size=32):
+        """Generate batches with images from video."""
+        while True:
+            random.shuffle(data_paths)
+            number_samples = len(data_paths)
+
+            for offset in range(0, number_samples, batch_size):
+                frames_batch = []
+                labels_batch = []
+                for fpath in data_paths[offset:offset + batch_size]:
+                    data = np.load(fpath)
+                    video_feats = data['arr']
+                    video_feats = video_feats[:self.MAX_FRAMES]
+                    if len(video_feats) < self.MAX_FRAMES:
+                        diff = self.MAX_FRAMES - len(video_feats)
+                        w, h = video_feats.shape[1:3]
+                        zero_frames = np.zeros([diff, w, h, 3])
+                        video_feats = np.concatenate(
+                            [video_feats, zero_frames])
+                    preprocessed_frames = np.asarray(
+                        [self.preprocess_func(cv2.resize(frame, (self.img_size, self.img_size)))
+                         for frame in copy.deepcopy(video_feats)])
+                    frames_batch.append(preprocessed_frames)
+                    labels_batch.append(
+                        self.config["CLASS_NAME_TO_LABEL"][fpath.split('/')[-2]])
+                yield np.asarray(frames_batch), to_categorical(labels_batch, num_classes=self.n_classes)
+
+    def train(self):
         """Train model on video with image features."""
         self.model.fit(
-            x=self.data_generator_masked(root_data_path=self.train_data_paths,
-                                         batch_size=self.config["data"]["train_bsize"]),
+            x=self.data_generator(data_paths=self.train_data_paths,
+                                  batch_size=self.config["data"]["train_bsize"]),
             steps_per_epoch=self.train_data_size // self.config["data"]["train_bsize"],
             epochs=self.config["trainer"]["epochs"],
             verbose=self.config["trainer"]["verbose"],
             callbacks=self.callbacks_list,
-            validation_data=self.data_generator_masked(root_data_path=self._data_paths,
-                                                       batch_size=self.config["data"]["val_bsize"]),
+            validation_data=self.data_generator(data_paths=self.val_data_paths,
+                                                batch_size=self.config["data"]["val_bsize"]),
             validation_steps=self.validation_data_size // self.config["data"]["val_bsize"],
             shuffle=self.config["trainer"]["shuffle"],
             sample_weight=None,

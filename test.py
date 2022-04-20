@@ -18,7 +18,7 @@ import numpy as np
 import tensorflow as tf
 
 from utils.common import read_json, write_json, recursively_get_file_paths
-from utils.model import PREPROCESS_FUNCS, IMAGE_SIZE
+from utils.models import PREPROCESS_FUNCS, IMAGE_SIZE
 from utils.metrics import accuracy, precision, recall, f1score, acc_per_class
 from utils.metrics import confusion_matrix, top_k_acc, plot_confusion_matrix, classification_report_sklearn
 
