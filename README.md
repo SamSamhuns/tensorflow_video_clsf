@@ -4,6 +4,19 @@
 
 Install tensorflow from the [official docs](https://www.tensorflow.org/install/pip)
 
+Create a `.env` file in the project home directory with the following contents with corrected paths:
+
+    XLA_FLAGS="--xla_gpu_cuda_data_dir=/usr/local/cuda"
+    TF_XLA_FLAGS="--tf_xla_enable_xla_devices --tf_xla_auto_jit=2 --tf_xla_cpu_global_jit"
+    TF_CPP_MIN_LOG_LEVEL='3'
+    TF_FORCE_GPU_ALLOW_GROWTH="true"
+    OMP_NUM_THREADS="15"
+    KMP_BLOCKTIME="0"
+    KMP_SETTINGS="1"
+    KMP_AFFINITY="granularity=fine,verbose,compact,1,0"
+    CUDA_DEVICE_ORDER="PCI_BUS_ID"
+    CUDA_VISIBLE_DEVICES="0"
+
 To use virtual environment: (Must set up cuda libs and cudatoolkit manually if not set up already)
 
 Note: When using a python virtualenv, the LD_LIBRARY_PATH variable should be set to /usr/local/cuda/lib64 in the shell source files. The XLA_FLAGS="--xla_gpu_cuda_data_dir=/usr/local/cuda must also be set to the cuda directory.
