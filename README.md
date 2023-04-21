@@ -1,6 +1,8 @@
-# Josh People in Video Training with whole frames
+# Video Classification Training with whole frames
 
 ## Setup
+
+Install tensorflow from the [official docs](https://www.tensorflow.org/install/pip)
 
 To use virtual environment: (Must set up cuda libs and cudatoolkit manually if not set up already)
 
