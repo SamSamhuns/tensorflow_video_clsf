@@ -1,7 +1,9 @@
-av==9.1.1
-matplotlib==3.5.1
-opencv-python==4.5.5.62
-python-dotenv==0.19.2
-scikit-learn==1.0.2
-tensorflow-gpu==2.8.0
-tqdm==4.62.3
+av==14.0.1
+matplotlib==3.10.0
+opencv-python=4.10.0.84
+python-dotenv==1.0.1
+scikit-learn==1.6.0
+tensorflow==2.16.1; sys_platform == 'darwin'
+tensorflow[and-cuda]==2.18.0; sys_platform == 'linux'
+tensorflow-hub==0.16.1
+tqdm==4.67.1
