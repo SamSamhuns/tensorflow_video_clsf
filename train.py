@@ -63,24 +63,24 @@ class VideoClassifier():
         custom_env_vars = dotenv_values(".env")
         self.config["os_vars"] = custom_env_vars
 
-        c_datetime = datetime.now().strftime(r'%Y%m%d_%H_%M_%S')
+        c_datetime = datetime.now().strftime(r"%Y%m%d_%H_%M_%S")
         self.models_save_path = osp.join(
-            config["trainer"]["save_dir"], f'{config["name"]}_{config["backbone"]}_{c_datetime}')
+            config["trainer"]["save_dir"], f"{config["name"]}_{config["backbone"]}_{c_datetime}")
         os.makedirs(self.models_save_path, exist_ok=True)
 
         self.logfile_path = osp.join(self.models_save_path, "train.log")
         print(f"Writing train logs to {self.logfile_path}")
 
         logging.basicConfig(filename=self.logfile_path,
-                            filemode='a',
-                            format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                            datefmt='%H:%M:%S',
+                            filemode="a",
+                            format="%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s",
+                            datefmt="%H:%M:%S",
                             level=logging.INFO)
         self.logger = logging.getLogger("trainer")
         self.logger.info(
-            f"Train log for model with backbone {config['backbone']}")
+            f"Train log for model with backbone {config["backbone"]}")
         self.logger.info(
-            f"Num GPUs Available: {len(tf.config.list_physical_devices('GPU'))}")
+            f"Num GPUs Available: {len(tf.config.list_physical_devices("GPU"))}")
 
         # if not none, training resumes from this checkpoint
         self.resume_ckpt = resume_ckpt_path
@@ -91,12 +91,12 @@ class VideoClassifier():
 
         # set callbacks
         ckpt_filefmt = ("e{epoch:02d}_ta_{categorical_accuracy:.2f}_tl_{loss:.2f}"
-                        "_va_{val_categorical_accuracy:.2f}_vl_{val_loss:.2f}")
+                        "_va_{val_categorical_accuracy:.2f}_vl_{val_loss:.2f}.keras")
         model_checkpoint_callback = ModelCheckpoint(
             filepath=osp.join(self.models_save_path, ckpt_filefmt),
             save_weights_only=False,
-            monitor='val_categorical_accuracy',
-            mode='auto',
+            monitor="val_categorical_accuracy",
+            mode="auto",
             save_best_only=True)
         LROnPlateau = ReduceLROnPlateau(
             monitor="val_categorical_accuracy",
@@ -104,19 +104,19 @@ class VideoClassifier():
             mode="auto", min_delta=0.0001, cooldown=0,
             min_lr=0)
         early_stopping_callback = tf.keras.callbacks.EarlyStopping(
-            monitor='val_loss', min_delta=0, patience=3, verbose=0,
-            mode='auto', baseline=None, restore_best_weights=False)
-        log_file = open(self.logfile_path, mode='a', buffering=1)
+            monitor="val_loss", min_delta=0, patience=3, verbose=0,
+            mode="auto", baseline=None, restore_best_weights=False)
+        log_file = open(self.logfile_path, mode="a", buffering=1)
         epoch_train_log_callback = tf.keras.callbacks.LambdaCallback(
             on_epoch_end=lambda epoch, logs: log_file.write(
-                f"epoch: {epoch}, loss: {logs['loss']}, accuracy: {logs['categorical_accuracy']}, "
-                f"val_loss: {logs['val_loss']}, val_accuracy: {logs['val_categorical_accuracy']}\n"),
+                f"epoch: {epoch}, loss: {logs["loss"]}, accuracy: {logs["categorical_accuracy"]}, "
+                f"val_loss: {logs["val_loss"]}, val_accuracy: {logs["val_categorical_accuracy"]}\n"),
             on_train_end=lambda logs: log_file.close())
 
         def _update_initial_epoch(epoch):
             self.config["trainer"]["initial_epoch"] = epoch
             write_json(self.config, osp.join(
-                self.models_save_path, 'config.json'))
+                self.models_save_path, "config.json"))
         update_initial_epoch_callback = tf.keras.callbacks.LambdaCallback(
             on_epoch_end=lambda epoch, logs: _update_initial_epoch(epoch))
 
@@ -125,7 +125,7 @@ class VideoClassifier():
                                update_initial_epoch_callback]
 
         # save updated config file to the checkpoint dir
-        write_json(config, osp.join(self.models_save_path, 'config.json'))
+        write_json(config, osp.join(self.models_save_path, "config.json"))
 
     def build_model(self):
         if self.resume_ckpt:
@@ -137,9 +137,9 @@ class VideoClassifier():
             self.model.optimizer.lr = self.config["optimizer"]["args"]["learning_rate"]
         else:
             self.logger.info("Cold start training")
-            model_name = f"{self.config['backbone']}_video_clsf"
+            model_name = f"{self.config["backbone"]}_video_clsf"
 
-            if "movinet" in self.config['backbone']:
+            if "movinet" in self.config["backbone"]:
                 self.model = build_video_clsf_movinet_model(model_name, self.backbone_model, self.MAX_FRAMES,
                                                             self.img_size, self.n_classes)
             else:
@@ -177,7 +177,7 @@ class VideoClassifier():
                 masks_batch = []
                 for fpath in data_paths[offset:offset + batch_size]:
                     data = np.load(fpath)
-                    video_feats = data['arr']
+                    video_feats = data["arr"]
                     video_feats = video_feats[:self.MAX_FRAMES]
                     if len(video_feats) < self.MAX_FRAMES:
                         diff = self.MAX_FRAMES - len(video_feats)
@@ -193,7 +193,7 @@ class VideoClassifier():
                          for frame in copy.deepcopy(video_feats)])
                     frames_batch.append(preprocessed_frames)
                     labels_batch.append(
-                        self.config["CLASS_NAME_TO_LABEL"][fpath.split('/')[-2]])
+                        self.config["CLASS_NAME_TO_LABEL"][fpath.split("/")[-2]])
                 yield ((np.asarray(frames_batch), np.asarray(masks_batch)),
                        to_categorical(labels_batch, num_classes=self.n_classes))
 
@@ -208,7 +208,7 @@ class VideoClassifier():
                 labels_batch = []
                 for fpath in data_paths[offset:offset + batch_size]:
                     data = np.load(fpath)
-                    video_feats = data['arr']
+                    video_feats = data["arr"]
                     video_feats = video_feats[:self.MAX_FRAMES]
                     if len(video_feats) < self.MAX_FRAMES:
                         diff = self.MAX_FRAMES - len(video_feats)
@@ -221,7 +221,7 @@ class VideoClassifier():
                          for frame in copy.deepcopy(video_feats)])
                     frames_batch.append(preprocessed_frames)
                     labels_batch.append(
-                        self.config["CLASS_NAME_TO_LABEL"][fpath.split('/')[-2]])
+                        self.config["CLASS_NAME_TO_LABEL"][fpath.split("/")[-2]])
                 yield np.asarray(frames_batch), to_categorical(labels_batch, num_classes=self.n_classes)
 
     def train(self):
@@ -239,20 +239,18 @@ class VideoClassifier():
             shuffle=self.config["trainer"]["shuffle"],
             sample_weight=None,
             initial_epoch=self.config["trainer"]["initial_epoch"],
-            validation_freq=self.config["trainer"]["val_freq"],
-            workers=self.config["trainer"]["num_workers"],
-            use_multiprocessing=self.config["trainer"]["use_multiproc"])
+            validation_freq=self.config["trainer"]["val_freq"])
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Train a video classifier to classify videos')
-    parser.add_argument('--cfg', '--config_path', type=str, dest="config_path",
+        description="Train a video classifier to classify videos")
+    parser.add_argument("--cfg", "--config_path", type=str, dest="config_path",
                         default="config/train_video_frames_reference.json",
                         help="Path to train config file (default: %(default)s)")
-    parser.add_argument('-r', '--resume_ckpt', type=str,
+    parser.add_argument("-r", "--resume_ckpt", type=str,
                         help="Path to savedmodel dir to resume training. (default: %(default)s)")
-    parser.add_argument('--lr', '--learning_rate', type=float, dest="learning_rate",
+    parser.add_argument("--lr", "--learning_rate", type=float, dest="learning_rate",
                         help="OPTIONAL: lr param to override that in config. (default: %(default)s)")
     args = parser.parse_args()
 
@@ -262,5 +260,5 @@ def main():
     model.train()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -41,7 +41,7 @@ def test(config, model_path):
             _seen_val_set.add(val)
     LABEL_MAP = _filtered_label_map
 
-    c_datetime = datetime.now().strftime(r'%Y%m%d_%H_%M_%S')
+    c_datetime = datetime.now().strftime(r"%Y%m%d_%H_%M_%S")
     log_dir = osp.join(config["trainer"]["log_dir"],
                        f"{exp_name}_{backbone}_{c_datetime}")
     logfile_path = osp.join(log_dir, "test.log")
@@ -49,9 +49,9 @@ def test(config, model_path):
 
     print(f"Writing test logs to {logfile_path} for model {model_path}")
     logging.basicConfig(filename=logfile_path,
-                        filemode='a',
-                        format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                        datefmt='%H:%M:%S',
+                        filemode="a",
+                        format="%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s",
+                        datefmt="%H:%M:%S",
                         level=logging.INFO)
     logger = logging.getLogger("tester")
     logger.info(f"Test results for model: {model_path}")
@@ -81,7 +81,7 @@ def test(config, model_path):
             labels_batch = []
             for fpath in data_paths[offset:offset + batch_size]:
                 data = np.load(fpath)
-                video_feats = data['arr']
+                video_feats = data["arr"]
                 video_feats = video_feats[:MAX_FRAMES]
                 if len(video_feats) < MAX_FRAMES:
                     diff = MAX_FRAMES - len(video_feats)
@@ -92,7 +92,7 @@ def test(config, model_path):
                     [preprocess_func(cv2.resize(frame, (img_size, img_size))) for frame in video_feats])
 
                 frames_batch.append(preprocessed_frames)
-                labels_batch.append(LABEL_MAP[fpath.split('/')[-2]])
+                labels_batch.append(LABEL_MAP[fpath.split("/")[-2]])
                 pbar.update(1)
             labels_seen |= set(labels_batch)
             frames_batch = np.asarray(frames_batch)
@@ -139,7 +139,7 @@ def test(config, model_path):
     print(log)
 
     # save updated config file to the checkpoint dir
-    write_json(config, osp.join(log_dir, 'config.json'))
+    write_json(config, osp.join(log_dir, "config.json"))
 
 
 def test_masked(config, model_path):
@@ -160,7 +160,7 @@ def test_masked(config, model_path):
             _seen_val_set.add(val)
     LABEL_MAP = _filtered_label_map
 
-    c_datetime = datetime.now().strftime(r'%Y%m%d_%H_%M_%S')
+    c_datetime = datetime.now().strftime(r"%Y%m%d_%H_%M_%S")
     log_dir = osp.join(config["trainer"]["log_dir"],
                        f"{exp_name}_{backbone}_{c_datetime}")
     logfile_path = osp.join(log_dir, "test.log")
@@ -168,9 +168,9 @@ def test_masked(config, model_path):
 
     print(f"Writing test logs to {logfile_path} for model {model_path}")
     logging.basicConfig(filename=logfile_path,
-                        filemode='a',
-                        format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                        datefmt='%H:%M:%S',
+                        filemode="a",
+                        format="%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s",
+                        datefmt="%H:%M:%S",
                         level=logging.INFO)
     logger = logging.getLogger("tester")
     logger.info(f"Test results for model: {model_path}")
@@ -201,7 +201,7 @@ def test_masked(config, model_path):
             masks_batch = []
             for fpath in data_paths[offset:offset + batch_size]:
                 data = np.load(fpath)
-                video_feats = data['arr']
+                video_feats = data["arr"]
                 video_feats = video_feats[:MAX_FRAMES]
                 if len(video_feats) < MAX_FRAMES:
                     diff = MAX_FRAMES - len(video_feats)
@@ -214,7 +214,7 @@ def test_masked(config, model_path):
                 preprocessed_frames = np.asarray(
                     [preprocess_func(cv2.resize(frame, (img_size, img_size))) for frame in video_feats])
                 frames_batch.append(preprocessed_frames)
-                labels_batch.append(LABEL_MAP[fpath.split('/')[-2]])
+                labels_batch.append(LABEL_MAP[fpath.split("/")[-2]])
                 pbar.update(1)
             labels_seen |= set(labels_batch)
             frames_batch = np.asarray(frames_batch)
@@ -262,15 +262,15 @@ def test_masked(config, model_path):
     print(log)
 
     # save updated config file to the checkpoint dir
-    write_json(config, osp.join(log_dir, 'config.json'))
+    write_json(config, osp.join(log_dir, "config.json"))
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Tensorflow Testing')
-    parser.add_argument('--cfg', '--config_path', type=str, dest="config_path",
+    parser = argparse.ArgumentParser(description="Tensorflow Testing")
+    parser.add_argument("--cfg", "--config_path", type=str, dest="config_path",
                         default="config/train_video_frames.json",
                         help="Path to train config file (default: %(default)s)")
-    parser.add_argument('--mp', '--model_path', type=str, dest="model_path", required=True,
+    parser.add_argument("--mp", "--model_path", type=str, dest="model_path", required=True,
                         help="Path to model (h5 model path or savedmodel dir)")
     args = parser.parse_args()
     config = read_json(args.config_path)
