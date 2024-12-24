@@ -17,16 +17,13 @@
     "verbose": "auto",
     "val_freq": 1,
     "shuffle": true,
-    "num_workers": 1,
-    "use_multiproc": true,
     "initial_epoch": 0
   },
   "optimizer": {
     "type": "Adam",
     "args": {
       "learning_rate": 0.0001,
-      "clipnorm": 1.0,
-      "clipvalue": 0.5
+      "clipnorm": 1.0
     }
   },
   "loss": {
