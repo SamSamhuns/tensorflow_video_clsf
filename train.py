@@ -19,7 +19,7 @@ import tensorflow as tf
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.callbacks import ModelCheckpoint, ReduceLROnPlateau
 
-from utils.common import read_json, write_json, recursively_get_file_paths
+from utils.common import read_json, write_json, recursively_get_file_paths, validate_data_paths
 from utils.common import init_obj
 from utils.models import IMAGE_SIZE, PREPROCESS_FUNCS, BACKBONE_MODELS
 from utils.model_builder import build_video_clsf_model, build_video_clsf_masked_model, build_video_clsf_movinet_model
@@ -53,8 +53,10 @@ class VideoClassifier():
 
         self.train_data_paths = recursively_get_file_paths(
             config["data"]["train_data_dir"], ext=self.data_extension)
+        validate_data_paths(self.train_data_paths, data_type="train")
         self.val_data_paths = recursively_get_file_paths(
             config["data"]["val_data_dir"], ext=self.data_extension)
+        validate_data_paths(self.train_data_paths, data_type="validation")
         self.train_data_size = len(self.train_data_paths)
         self.validation_data_size = len(self.val_data_paths)
 
@@ -78,9 +80,9 @@ class VideoClassifier():
                             level=logging.INFO)
         self.logger = logging.getLogger("trainer")
         self.logger.info(
-            f"Train log for model with backbone {config["backbone"]}")
+            "Train log for model with backbone %s", config["backbone"])
         self.logger.info(
-            f"Num GPUs Available: {len(tf.config.list_physical_devices("GPU"))}")
+            "Num GPUs Available: %d", len(tf.config.list_physical_devices("GPU")))
 
         # if not none, training resumes from this checkpoint
         self.resume_ckpt = resume_ckpt_path
@@ -106,7 +108,7 @@ class VideoClassifier():
         early_stopping_callback = tf.keras.callbacks.EarlyStopping(
             monitor="val_loss", min_delta=0, patience=3, verbose=0,
             mode="auto", baseline=None, restore_best_weights=False)
-        log_file = open(self.logfile_path, mode="a", buffering=1)
+        log_file = open(self.logfile_path, mode="a", buffering=1, encoding="utf-8")
         epoch_train_log_callback = tf.keras.callbacks.LambdaCallback(
             on_epoch_end=lambda epoch, logs: log_file.write(
                 f"epoch: {epoch}, loss: {logs["loss"]}, accuracy: {logs["categorical_accuracy"]}, "
@@ -130,7 +132,7 @@ class VideoClassifier():
     def build_model(self):
         if self.resume_ckpt:
             self.logger.info(
-                f"Warm start training from checkpoint {self.resume_ckpt}")
+                "Warm start training from checkpoint %s", self.resume_ckpt)
             self.model = tf.keras.models.load_model(
                 self.resume_ckpt, compile=True)
             # To change anything except learning rate, recompilation is required
