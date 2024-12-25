@@ -1,6 +1,6 @@
 FROM nvcr.io/nvidia/tritonserver:20.12-py3
 
-WORKDIR cv_root
+WORKDIR /cv_root
 
 # copy Required files
 COPY models models
