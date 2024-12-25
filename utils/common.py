@@ -69,3 +69,13 @@ def recursively_get_file_paths(root_dir, ext="npy"):
     for fpath in glob.glob(f"{root_dir}/**/*.{ext}", recursive=True):
         fpaths.append(fpath)
     return fpaths
+
+
+def validate_data_paths(data_paths, data_type="train"):
+    """
+    Validate the data paths
+    """
+    if not data_paths or len(data_paths) == 0:
+        raise FileNotFoundError(
+            f"No data found for {data_type}. Please check the data dir or file paths.")
+    print(f"Found {len(data_paths)} {data_type} samples.")
