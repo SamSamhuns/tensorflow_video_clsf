@@ -11,8 +11,8 @@ RUN apt-get update \
 WORKDIR /tensorflow_training
 
 # setup python env vars & virtual env
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONBUFFERED=1
 # ENV VIRTUAL_ENV=/opt/venv
 # RUN python3 -m venv $VIRTUAL_ENV
 # ENV PATH="$VIRTUAL_ENV/bin:$PATH"
